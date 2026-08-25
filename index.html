@@ -84,20 +84,31 @@
 
 <script>
 /* =========================================================================
-   ONE-TIME SETUP — do this once before you push to GitHub. No account needed.
-   1. Go to https://extendsclass.com/json-storage.html
-   2. In the big text box, paste exactly:  {}
-   3. Click "Save". A box appears with a URI like
-      https://json.extendsclass.com/bin/xxxxxxxxxxxx — copy that last part
-      (just the xxxxxxxxxxxx bit) — that's your bin ID.
-   4. Paste it below, replacing "PASTE_YOUR_BIN_ID_HERE".
-   5. Commit + push. That's it — anyone who opens the page (you and your
+   ONE-TIME SETUP — do this once before you push to GitHub:
+   1. Go to https://console.firebase.google.com and sign in with any Google
+      account. Click "Create a Firebase project", give it any name, and you
+      can skip/disable Gemini and Google Analytics when asked.
+   2. In the left sidebar under "Build", click "Realtime Database" →
+      "Create Database". Pick any region, and choose "Start in test mode"
+      when asked about security rules (we'll fix this next).
+   3. Once it's created, click the "Rules" tab and replace whatever is
+      there with exactly:
+        { "rules": { ".read": true, ".write": true } }
+      then click "Publish". (Test mode alone expires after 30 days —
+      this keeps it open permanently. Since this is just a household
+      chore tracker with no sensitive data, that's fine — just don't
+      share the URL below outside your household.)
+   4. Back on the Realtime Database page, copy the URL shown at the top
+      (looks like https://your-project-default-rtdb.firebaseio.com).
+   5. Paste it below, replacing "PASTE_YOUR_FIREBASE_URL_HERE".
+   6. Commit + push. That's it — anyone who opens the page (you and your
       partner) will automatically see the same, synced garden. No login,
       no setup screen, nothing to configure on their end.
    ========================================================================= */
-const BIN_ID = "afecab649148";
-const SYNC_ENABLED = BIN_ID && BIN_ID !== "PASTE_YOUR_BIN_ID_HERE";
-const POLL_INTERVAL_MS = 45000; // keep this generous — the free tier has a monthly call cap
+const FIREBASE_URL = "https://gameofchores-default-rtdb.europe-west1.firebasedatabase.app/";
+const DB_PATH = "choreGarden";
+const SYNC_ENABLED = FIREBASE_URL && FIREBASE_URL !== "PASTE_YOUR_FIREBASE_URL_HERE";
+const POLL_INTERVAL_MS = 20000;
 
 const STORAGE_KEY = "choreGardenState";
 
@@ -343,17 +354,16 @@ function renamePlayer(id, name) {
   render();
 }
 
-// ---------- sync (ExtendsClass JSON storage — free, keyless, CORS-friendly) ----------
-// Both of you load this same page, both point at the same bin ID baked in
-// above, so there's nothing to log into or configure per-person.
-async function binGet() {
-  const res = await fetch(`https://json.extendsclass.com/bin/${BIN_ID}`);
-  if (res.status === 404) return null; // bin doesn't exist / wrong id
+// ---------- sync (Firebase Realtime Database — Google infra, CORS-friendly) ----------
+// Both of you load this same page, both point at the same database URL baked
+// in above, so there's nothing to log into or configure per-person.
+async function dbGet() {
+  const res = await fetch(`${FIREBASE_URL}/${DB_PATH}.json`);
   if (!res.ok) throw new Error(`Sync read failed (${res.status})`);
-  return res.json();
+  return res.json(); // null if nothing stored yet
 }
-async function binPut(data) {
-  const res = await fetch(`https://json.extendsclass.com/bin/${BIN_ID}`, {
+async function dbPut(data) {
+  const res = await fetch(`${FIREBASE_URL}/${DB_PATH}.json`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -366,7 +376,7 @@ async function pushRemote() {
   syncStatus = "syncing";
   renderSyncBadge();
   try {
-    await binPut(state);
+    await dbPut(state);
     syncStatus = "synced";
     lastSyncedAt = new Date();
   } catch (e) {
@@ -381,14 +391,14 @@ async function pullRemote() {
   syncStatus = "syncing";
   renderSyncBadge();
   try {
-    const remote = await binGet();
+    const remote = await dbGet();
     if (remote && (!state.updatedAt || (remote.updatedAt && remote.updatedAt > state.updatedAt))) {
       state = normalize(remote);
       save();
       render();
     } else if (!remote) {
-      // Nothing usable stored yet (e.g. bin still holds the {} placeholder) — seed it.
-      await binPut(state);
+      // Nothing stored yet — seed the database with what we have.
+      await dbPut(state);
     }
     syncStatus = "synced";
     lastSyncedAt = new Date();
@@ -497,8 +507,8 @@ function render() {
     <div class="card" style="padding:12px 14px;margin-bottom:16px;background:var(--sun-soft);border-color:transparent">
       <p style="margin:0;font-size:12px;color:var(--text)">
         <b>Not synced yet.</b> To share this garden with your partner, grab a free bin ID at
-        <a class="link" href="https://extendsclass.com/json-storage.html" target="_blank" rel="noopener">extendsclass.com/json-storage</a> (no account needed),
-        then paste it into the <code>BIN_ID</code> constant near the top of this file and redeploy. Until then, everything's saved only on this device.
+        <a class="link" href="https://console.firebase.google.com" target="_blank" rel="noopener">Firebase</a> (free, just a Google account),
+        then paste your database URL into the <code>FIREBASE_URL</code> constant near the top of this file and redeploy. Until then, everything's saved only on this device.
       </p>
     </div>` : "";
 
