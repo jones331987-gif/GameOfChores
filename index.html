@@ -84,17 +84,20 @@
 
 <script>
 /* =========================================================================
-   ONE-TIME SETUP — do this once before you push to GitHub:
-   1. Go to https://getpantry.cloud and sign up (just an email, no password).
-   2. Copy your Pantry ID from the dashboard.
-   3. Paste it below, replacing "53039059-028c-45bb-ae6f-0983961b85ba".
-   4. Commit + push. That's it — anyone who opens the page (you and your
+   ONE-TIME SETUP — do this once before you push to GitHub. No account needed.
+   1. Go to https://extendsclass.com/json-storage.html
+   2. In the big text box, paste exactly:  {}
+   3. Click "Save". A box appears with a URI like
+      https://json.extendsclass.com/bin/xxxxxxxxxxxx — copy that last part
+      (just the xxxxxxxxxxxx bit) — that's your bin ID.
+   4. Paste it below, replacing "PASTE_YOUR_BIN_ID_HERE".
+   5. Commit + push. That's it — anyone who opens the page (you and your
       partner) will automatically see the same, synced garden. No login,
       no setup screen, nothing to configure on their end.
    ========================================================================= */
-const PANTRY_ID = "53039059-028c-45bb-ae6f-0983961b85ba";
-const BASKET_NAME = "chore-garden-state";
-const SYNC_ENABLED = PANTRY_ID && PANTRY_ID !== "PASTE_YOUR_PANTRY_ID_HERE";
+const BIN_ID = "afecab649148";
+const SYNC_ENABLED = BIN_ID && BIN_ID !== "PASTE_YOUR_BIN_ID_HERE";
+const POLL_INTERVAL_MS = 45000; // keep this generous — the free tier has a monthly call cap
 
 const STORAGE_KEY = "choreGardenState";
 
@@ -340,18 +343,18 @@ function renamePlayer(id, name) {
   render();
 }
 
-// ---------- sync (Pantry — a free, keyless JSON store) ----------
-// Both of you load this same page, both point at the same Pantry basket
-// baked in above, so there's nothing to log into or configure per-person.
-async function pantryGet() {
-  const res = await fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`);
-  if (res.status === 400 || res.status === 404) return null; // basket doesn't exist yet
+// ---------- sync (ExtendsClass JSON storage — free, keyless, CORS-friendly) ----------
+// Both of you load this same page, both point at the same bin ID baked in
+// above, so there's nothing to log into or configure per-person.
+async function binGet() {
+  const res = await fetch(`https://json.extendsclass.com/bin/${BIN_ID}`);
+  if (res.status === 404) return null; // bin doesn't exist / wrong id
   if (!res.ok) throw new Error(`Sync read failed (${res.status})`);
   return res.json();
 }
-async function pantryPost(data) {
-  const res = await fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`, {
-    method: "POST",
+async function binPut(data) {
+  const res = await fetch(`https://json.extendsclass.com/bin/${BIN_ID}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
@@ -363,7 +366,7 @@ async function pushRemote() {
   syncStatus = "syncing";
   renderSyncBadge();
   try {
-    await pantryPost(state);
+    await binPut(state);
     syncStatus = "synced";
     lastSyncedAt = new Date();
   } catch (e) {
@@ -378,14 +381,14 @@ async function pullRemote() {
   syncStatus = "syncing";
   renderSyncBadge();
   try {
-    const remote = await pantryGet();
+    const remote = await binGet();
     if (remote && (!state.updatedAt || (remote.updatedAt && remote.updatedAt > state.updatedAt))) {
       state = normalize(remote);
       save();
       render();
     } else if (!remote) {
-      // Nothing stored yet — seed the shared basket with what we have.
-      await pantryPost(state);
+      // Nothing usable stored yet (e.g. bin still holds the {} placeholder) — seed it.
+      await binPut(state);
     }
     syncStatus = "synced";
     lastSyncedAt = new Date();
@@ -398,7 +401,7 @@ async function pullRemote() {
 
 function startPolling() {
   stopPolling();
-  pollTimer = setInterval(pullRemote, 15000);
+  pollTimer = setInterval(pullRemote, POLL_INTERVAL_MS);
 }
 function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
@@ -493,9 +496,9 @@ function render() {
   const setupBanner = !SYNC_ENABLED ? `
     <div class="card" style="padding:12px 14px;margin-bottom:16px;background:var(--sun-soft);border-color:transparent">
       <p style="margin:0;font-size:12px;color:var(--text)">
-        <b>Not synced yet.</b> To share this garden with your partner, grab a free Pantry ID at
-        <a class="link" href="https://getpantry.cloud" target="_blank" rel="noopener">getpantry.cloud</a> (just an email, no password),
-        then paste it into the <code>PANTRY_ID</code> constant near the top of this file and redeploy. Until then, everything's saved only on this device.
+        <b>Not synced yet.</b> To share this garden with your partner, grab a free bin ID at
+        <a class="link" href="https://extendsclass.com/json-storage.html" target="_blank" rel="noopener">extendsclass.com/json-storage</a> (no account needed),
+        then paste it into the <code>BIN_ID</code> constant near the top of this file and redeploy. Until then, everything's saved only on this device.
       </p>
     </div>` : "";
 
