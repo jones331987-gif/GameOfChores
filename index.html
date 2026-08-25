@@ -84,31 +84,16 @@
 
 <script>
 /* =========================================================================
-   ONE-TIME SETUP — do this once before you push to GitHub:
-   1. Go to https://console.firebase.google.com and sign in with any Google
-      account. Click "Create a Firebase project", give it any name, and you
-      can skip/disable Gemini and Google Analytics when asked.
-   2. In the left sidebar under "Build", click "Realtime Database" →
-      "Create Database". Pick any region, and choose "Start in test mode"
-      when asked about security rules (we'll fix this next).
-   3. Once it's created, click the "Rules" tab and replace whatever is
-      there with exactly:
-        { "rules": { ".read": true, ".write": true } }
-      then click "Publish". (Test mode alone expires after 30 days —
-      this keeps it open permanently. Since this is just a household
-      chore tracker with no sensitive data, that's fine — just don't
-      share the URL below outside your household.)
-   4. Back on the Realtime Database page, copy the URL shown at the top
-      (looks like https://your-project-default-rtdb.firebaseio.com).
-   5. Paste it below, replacing "PASTE_YOUR_FIREBASE_URL_HERE".
-   6. Commit + push. That's it — anyone who opens the page (you and your
-      partner) will automatically see the same, synced garden. No login,
-      no setup screen, nothing to configure on their end.
+   Sync is already configured for this household's shared garden — it
+   points at your Firebase Realtime Database, so both of you syncing
+   through the same URL below. No further setup needed.
    ========================================================================= */
-const FIREBASE_URL = "https://gameofchores-default-rtdb.europe-west1.firebasedatabase.app/";
+const FIREBASE_URL = "https://gameofchores-default-rtdb.europe-west1.firebasedatabase.app";
 const DB_PATH = "choreGarden";
 const SYNC_ENABLED = FIREBASE_URL && FIREBASE_URL !== "PASTE_YOUR_FIREBASE_URL_HERE";
 const POLL_INTERVAL_MS = 20000;
+
+
 
 const STORAGE_KEY = "choreGardenState";
 
@@ -134,6 +119,8 @@ const DEFAULT_REWARDS = [
   { id: "r4", name: "Takeout night", cost: 30 },
 ];
 
+const DEFAULT_ONE_OFF_TASKS = [];
+
 const STAGES = [
   { min: 0, label: "Seed", hint: "Plant your first chore to get started" },
   { min: 15, label: "Sprout", hint: "Something's growing!" },
@@ -148,6 +135,7 @@ function defaultState() {
     players: DEFAULT_PLAYERS,
     chores: DEFAULT_CHORES,
     rewards: DEFAULT_REWARDS,
+    oneOffTasks: DEFAULT_ONE_OFF_TASKS,
     lifetimePoints: 0,
     history: [],
     updatedAt: null,
@@ -194,6 +182,14 @@ function normalize(raw) {
       }))
     : base.rewards;
 
+  const oneOffTasks = Array.isArray(raw.oneOffTasks)
+    ? raw.oneOffTasks.map((t) => ({
+        id: t.id || uid("o"),
+        name: t.name || "Task",
+        points: num(t.points, 1),
+      }))
+    : base.oneOffTasks;
+
   const history = Array.isArray(raw.history)
     ? raw.history.map((h) => ({
         id: h.id || uid("h"),
@@ -211,7 +207,7 @@ function normalize(raw) {
     num(raw.points, players.reduce((sum, p) => sum + p.points, 0))
   );
 
-  return { players, chores, rewards, history, lifetimePoints, updatedAt: raw.updatedAt || null };
+  return { players, chores, rewards, oneOffTasks, history, lifetimePoints, updatedAt: raw.updatedAt || null };
 }
 
 function formatRelative(iso) {
@@ -244,7 +240,7 @@ function esc(str) {
 
 // ---------- local state ----------
 let state = load();
-let ui = { addingChore: false, addingReward: false, editingPlayer: null };
+let ui = { addingChore: false, addingReward: false, addingOneOff: false, editingPlayer: null };
 let syncStatus = SYNC_ENABLED ? "syncing" : "offline"; // offline | syncing | synced | error
 let lastSyncedAt = null;
 let pollTimer = null;
@@ -335,11 +331,40 @@ function addReward(name, cost) {
   ui.addingReward = false;
 }
 
+function addOneOffTask(name, points) {
+  name = (name || "").trim();
+  points = Math.max(1, parseInt(points, 10) || 1);
+  if (!name) return;
+  update((s) => {
+    s.oneOffTasks.push({ id: uid("o"), name, points });
+  });
+  ui.addingOneOff = false;
+}
+
+// One-off tasks disappear once completed — there's no "last done" to track
+// since, by definition, they're not expected to come back around.
+function completeOneOffTask(taskId, playerId) {
+  update((s) => {
+    const task = s.oneOffTasks.find((t) => t.id === taskId);
+    const player = s.players.find((p) => p.id === playerId);
+    if (!task || !player) return;
+    const now = new Date().toISOString();
+    player.points = num(player.points, 0) + task.points;
+    s.lifetimePoints = num(s.lifetimePoints, 0) + task.points;
+    s.oneOffTasks = s.oneOffTasks.filter((t) => t.id !== taskId);
+    s.history.unshift({ id: uid("h"), at: now, text: `${player.name} completed "${task.name}"`, delta: task.points, color: player.color });
+    s.history = s.history.slice(0, 12);
+  });
+}
+
 function deleteChore(id) {
   update((s) => { s.chores = s.chores.filter((c) => c.id !== id); });
 }
 function deleteReward(id) {
   update((s) => { s.rewards = s.rewards.filter((r) => r.id !== id); });
+}
+function deleteOneOffTask(id) {
+  update((s) => { s.oneOffTasks = s.oneOffTasks.filter((t) => t.id !== id); });
 }
 
 function renamePlayer(id, name) {
@@ -567,6 +592,36 @@ function render() {
       </div>
     </div>` : "";
 
+  const oneOffCards = state.oneOffTasks.map((task) => {
+    const avatarBtns = state.players.map((p) => `
+      <button class="btn avatar" style="background:${p.color};width:32px;height:32px;font-size:12px" title="Mark done by ${esc(p.name)}" onclick="completeOneOffTask('${task.id}','${p.id}')">${esc(p.initial)}</button>
+    `).join("");
+    return `
+    <div class="card" style="padding:14px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <p style="margin:0;font-weight:800;font-size:14px">${esc(task.name)}</p>
+        <div class="row" style="gap:6px">
+          <span class="pill coin" style="background:var(--sun-soft);color:var(--sun)">${num(task.points, 0)}</span>
+          <button class="icon-trash btn" style="color:var(--text-faint)" title="Remove task" onclick="deleteOneOffTask('${task.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="row" style="justify-content:flex-end;gap:6px;margin-top:10px">${avatarBtns}</div>
+    </div>`;
+  }).join("");
+
+  const addOneOffCard = ui.addingOneOff ? `
+    <div class="card fade-in" style="padding:14px;border:1px dashed var(--berry)">
+      <p style="margin:0 0 8px;font-size:12px;font-weight:800;color:var(--berry)">New one-off task</p>
+      <input id="newOneOffName" placeholder="Task name" style="width:100%;margin-bottom:8px" />
+      <div class="row" style="gap:8px">
+        <label style="font-size:12px;font-weight:700;color:var(--text-faint)">Points</label>
+        <input id="newOneOffPoints" type="number" min="1" value="10" style="width:64px" />
+        <div style="flex:1"></div>
+        <button class="btn" style="color:var(--text-faint)" onclick="ui.addingOneOff=false; render();">✕</button>
+        <button class="btn pill" style="background:var(--berry);color:#fff" onclick="addOneOffTask(document.getElementById('newOneOffName').value, document.getElementById('newOneOffPoints').value); render();">✔ Save</button>
+      </div>
+    </div>` : "";
+
   const rewardCards = state.rewards.map((reward) => {
     const btns = state.players.map((p) => {
       const canAfford = num(p.points, 0) >= reward.cost;
@@ -642,6 +697,14 @@ function render() {
     <div class="grid2" style="margin-bottom:22px">${choreCards}${addChoreCard}</div>
 
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="row" style="gap:6px"><span>🎯</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">One-off Tasks</h2></div>
+      <button class="btn pill" style="background:var(--berry-soft);color:var(--berry)" onclick="ui.addingOneOff=true; render();">+ Add</button>
+    </div>
+    ${state.oneOffTasks.length || ui.addingOneOff ? `
+    <div class="grid2" style="margin-bottom:22px">${oneOffCards}${addOneOffCard}</div>` : `
+    <p style="margin:0 0 22px;font-size:12px;color:var(--text-faint)">Nothing special on the list right now — tap "+ Add" for a task that's a one-time thing, like fixing the shelf or returning a package.</p>`}
+
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
       <div class="row" style="gap:6px"><span>🎁</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Rewards</h2></div>
       <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingReward=true; render();">+ Add</button>
     </div>
@@ -659,6 +722,8 @@ function render() {
   if (nc) nc.addEventListener("keydown", (e) => { if (e.key === "Enter") { addChore(nc.value, document.getElementById("newChorePoints").value); render(); } });
   const nr = document.getElementById("newRewardName");
   if (nr) nr.addEventListener("keydown", (e) => { if (e.key === "Enter") { addReward(nr.value, document.getElementById("newRewardCost").value); render(); } });
+  const no = document.getElementById("newOneOffName");
+  if (no) no.addEventListener("keydown", (e) => { if (e.key === "Enter") { addOneOffTask(no.value, document.getElementById("newOneOffPoints").value); render(); } });
   const en = document.getElementById("editNameInput");
   if (en) { en.focus(); en.addEventListener("keydown", (e) => { if (e.key === "Enter") renamePlayer(en.dataset.player, en.value); }); }
 }
