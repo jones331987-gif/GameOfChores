@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Our Chore Garden</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌷</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6F1FB;
+    --card-bg: #FFFFFF;
+    --card-border: #EAE0F5;
+    --card-border-soft: #F0E7FA;
+    --text: #4A3B58;
+    --text-muted: #8B7C9C;
+    --text-faint: #B4A7C7;
+    --sage: #5FA588;
+    --sage-soft: #E4F3EC;
+    --sun: #F4B740;
+    --sun-soft: #FBEED0;
+    --berry: #EE6E9C;
+    --berry-soft: #FBE3EC;
+    --danger: #E8615A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Nunito', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+  .wrap { width: 100%; max-width: 720px; }
+  .display { font-family: 'Baloo 2', cursive; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border-soft);
+    border-radius: 16px;
+    transition: border-color 0.15s ease;
+  }
+  .card:hover { border-color: #5fa58877; }
+  button { font-family: inherit; cursor: pointer; border: none; }
+  button:disabled { cursor: not-allowed; }
+  .btn { transition: transform 0.12s ease, filter 0.12s ease; }
+  .btn:active { transform: scale(0.94); }
+  .btn:hover:not(:disabled) { filter: brightness(1.06); }
+  input {
+    font-family: inherit;
+    background: #FBF8FE;
+    border: 1px solid var(--card-border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 6px 10px;
+  }
+  input:focus { outline: none; border-color: var(--sage); }
+  .fade-in { animation: fadeIn 0.25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .sway { animation: sway 3.5s ease-in-out infinite; transform-origin: bottom center; }
+  @keyframes sway { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+  .row { display: flex; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 640px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+  .pts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pill { border-radius: 999px; font-weight: 700; font-size: 12px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; }
+  .icon-trash { opacity: 0; transition: opacity 0.15s ease; }
+  .card:hover .icon-trash { opacity: 1; }
+  .coin::before { content: "🪙"; font-size: 11px; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
+  }
+  .sync-badge { font-size: 11px; font-weight: 700; }
+  a.link { color: var(--sage); font-weight: 700; text-decoration: none; }
+  a.link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+/* =========================================================================
+   ONE-TIME SETUP — do this once before you push to GitHub:
+   1. Go to https://getpantry.cloud and sign up (just an email, no password).
+   2. Copy your Pantry ID from the dashboard.
+   3. Paste it below, replacing "PASTE_YOUR_PANTRY_ID_HERE".
+   4. Commit + push. That's it — anyone who opens the page (you and your
+      partner) will automatically see the same, synced garden. No login,
+      no setup screen, nothing to configure on their end.
+   ========================================================================= */
+const PANTRY_ID = "53039059-028c-45bb-ae6f-0983961b85ba";
+const BASKET_NAME = "chore-garden-state";
+const SYNC_ENABLED = PANTRY_ID && PANTRY_ID !== "53039059-028c-45bb-ae6f-0983961b85ba";
+
+const STORAGE_KEY = "choreGardenState";
+
+const DEFAULT_PLAYERS = [
+  { id: "p1", name: "You", color: "#EE6E9C", initial: "Y", points: 0 },
+  { id: "p2", name: "Partner", color: "#5FA588", initial: "P", points: 0 },
+];
+
+const DEFAULT_CHORES = [
+  { id: "c1", name: "Dishes", points: 5, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c2", name: "Laundry", points: 8, assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
+  { id: "c3", name: "Take out trash", points: 3, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c4", name: "Vacuum / mop", points: 7, assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
+  { id: "c5", name: "Clean bathroom", points: 10, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c6", name: "Grocery run", points: 6, assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
+  { id: "c7", name: "Cook dinner", points: 6, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+];
+
+const DEFAULT_REWARDS = [
+  { id: "r1", name: "Pick the movie night", cost: 15 },
+  { id: "r2", name: "Breakfast in bed", cost: 20 },
+  { id: "r3", name: "A lazy Sunday, no chores", cost: 25 },
+  { id: "r4", name: "Takeout night", cost: 30 },
+];
+
+const STAGES = [
+  { min: 0, label: "Seed", hint: "Plant your first chore to get started" },
+  { min: 15, label: "Sprout", hint: "Something's growing!" },
+  { min: 40, label: "Sapling", hint: "Look at that little stem go" },
+  { min: 80, label: "Budding", hint: "A bud is forming" },
+  { min: 150, label: "Blooming", hint: "Full bloom, you two are a team" },
+  { min: 250, label: "Flourishing", hint: "A whole flourishing garden" },
+];
+
+function defaultState() {
+  return {
+    players: DEFAULT_PLAYERS,
+    chores: DEFAULT_CHORES,
+    rewards: DEFAULT_REWARDS,
+    lifetimePoints: 0,
+    history: [],
+    updatedAt: null,
+  };
+}
+
+function num(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+// Defensive normalizer: fills in any missing/NaN fields, e.g. from older
+// saved versions of this app, or a partially-formed remote payload.
+function normalize(raw) {
+  const base = defaultState();
+  if (!raw || typeof raw !== "object") return base;
+
+  const players = Array.isArray(raw.players) && raw.players.length
+    ? raw.players.map((p, i) => ({
+        id: p.id || base.players[i]?.id || `p${i + 1}`,
+        name: p.name || base.players[i]?.name || `Player ${i + 1}`,
+        color: p.color || base.players[i]?.color || "#5FA588",
+        initial: (p.initial || p.name || "?").charAt(0).toUpperCase(),
+        points: num(p.points, 0),
+      }))
+    : base.players;
+
+  const chores = Array.isArray(raw.chores)
+    ? raw.chores.map((c) => ({
+        id: c.id || uid("c"),
+        name: c.name || "Chore",
+        points: num(c.points, 1),
+        assignedTo: c.assignedTo || players[0].id,
+        lastDoneBy: c.lastDoneBy || null,
+        lastDoneAt: c.lastDoneAt || null,
+      }))
+    : base.chores;
+
+  const rewards = Array.isArray(raw.rewards)
+    ? raw.rewards.map((r) => ({
+        id: r.id || uid("r"),
+        name: r.name || "Reward",
+        cost: num(r.cost, 1),
+      }))
+    : base.rewards;
+
+  const history = Array.isArray(raw.history)
+    ? raw.history.map((h) => ({
+        id: h.id || uid("h"),
+        at: h.at || new Date().toISOString(),
+        text: h.text || "",
+        delta: num(h.delta, 0),
+        color: h.color || "#5FA588",
+      }))
+    : [];
+
+  // lifetimePoints may be missing on older saves; fall back to the sum of
+  // player points, or the old shared "points" field if that's all we have.
+  const lifetimePoints = num(
+    raw.lifetimePoints,
+    num(raw.points, players.reduce((sum, p) => sum + p.points, 0))
+  );
+
+  return { players, chores, rewards, history, lifetimePoints, updatedAt: raw.updatedAt || null };
+}
+
+function formatRelative(iso) {
+  if (!iso) return "Never done yet";
+  const then = new Date(iso);
+  const now = new Date();
+  const diffMs = new Date(now).setHours(0, 0, 0, 0) - new Date(then).setHours(0, 0, 0, 0);
+  const days = Math.round(diffMs / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 5) return `${weeks} week${weeks > 1 ? "s" : ""} ago`;
+  return then.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function uid(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function getStageIndex(lifetimePoints) {
+  let idx = 0;
+  for (let i = 0; i < STAGES.length; i++) if (lifetimePoints >= STAGES[i].min) idx = i;
+  return idx;
+}
+
+function esc(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- local state ----------
+let state = load();
+let ui = { addingChore: false, addingReward: false, editingPlayer: null };
+let syncStatus = SYNC_ENABLED ? "syncing" : "offline"; // offline | syncing | synced | error
+let lastSyncedAt = null;
+let pollTimer = null;
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return normalize(raw ? JSON.parse(raw) : null);
+  } catch (e) {
+    return normalize(null);
+  }
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error("Could not save chore garden state", e);
+  }
+}
+
+function update(mutator) {
+  mutator(state);
+  state.updatedAt = new Date().toISOString();
+  save();
+  render();
+  pushRemote();
+}
+
+function playerById(id) {
+  return state.players.find((p) => p.id === id) || null;
+}
+
+// ---------- actions ----------
+function logChore(choreId, playerId) {
+  update((s) => {
+    const chore = s.chores.find((c) => c.id === choreId);
+    const player = s.players.find((p) => p.id === playerId);
+    if (!chore || !player) return;
+    const now = new Date().toISOString();
+    player.points = num(player.points, 0) + chore.points;
+    s.lifetimePoints = num(s.lifetimePoints, 0) + chore.points;
+    chore.lastDoneBy = playerId;
+    chore.lastDoneAt = now;
+    s.history.unshift({ id: uid("h"), at: now, text: `${player.name} finished "${chore.name}"`, delta: chore.points, color: player.color });
+    s.history = s.history.slice(0, 12);
+  });
+}
+
+function swapAssignment(choreId) {
+  update((s) => {
+    const chore = s.chores.find((c) => c.id === choreId);
+    if (!chore) return;
+    const other = s.players.find((p) => p.id !== chore.assignedTo);
+    chore.assignedTo = other ? other.id : s.players[0].id;
+  });
+}
+
+function redeemReward(rewardId, playerId) {
+  update((s) => {
+    const reward = s.rewards.find((r) => r.id === rewardId);
+    const player = s.players.find((p) => p.id === playerId);
+    if (!reward || !player || player.points < reward.cost) return;
+    const now = new Date().toISOString();
+    player.points -= reward.cost;
+    s.history.unshift({ id: uid("h"), at: now, text: `${player.name} redeemed "${reward.name}"`, delta: -reward.cost, color: player.color });
+    s.history = s.history.slice(0, 12);
+  });
+}
+
+function addChore(name, points) {
+  name = (name || "").trim();
+  points = Math.max(1, parseInt(points, 10) || 1);
+  if (!name) return;
+  update((s) => {
+    s.chores.push({ id: uid("c"), name, points, assignedTo: s.players[0].id, lastDoneBy: null, lastDoneAt: null });
+  });
+  ui.addingChore = false;
+}
+
+function addReward(name, cost) {
+  name = (name || "").trim();
+  cost = Math.max(1, parseInt(cost, 10) || 1);
+  if (!name) return;
+  update((s) => {
+    s.rewards.push({ id: uid("r"), name, cost });
+  });
+  ui.addingReward = false;
+}
+
+function deleteChore(id) {
+  update((s) => { s.chores = s.chores.filter((c) => c.id !== id); });
+}
+function deleteReward(id) {
+  update((s) => { s.rewards = s.rewards.filter((r) => r.id !== id); });
+}
+
+function renamePlayer(id, name) {
+  name = (name || "").trim();
+  if (name) {
+    update((s) => {
+      const p = s.players.find((p) => p.id === id);
+      if (p) { p.name = name; p.initial = name.charAt(0).toUpperCase(); }
+    });
+  }
+  ui.editingPlayer = null;
+  render();
+}
+
+// ---------- sync (Pantry — a free, keyless JSON store) ----------
+// Both of you load this same page, both point at the same Pantry basket
+// baked in above, so there's nothing to log into or configure per-person.
+async function pantryGet() {
+  const res = await fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`);
+  if (res.status === 400 || res.status === 404) return null; // basket doesn't exist yet
+  if (!res.ok) throw new Error(`Sync read failed (${res.status})`);
+  return res.json();
+}
+async function pantryPost(data) {
+  const res = await fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Sync write failed (${res.status})`);
+}
+
+async function pushRemote() {
+  if (!SYNC_ENABLED) return;
+  syncStatus = "syncing";
+  renderSyncBadge();
+  try {
+    await pantryPost(state);
+    syncStatus = "synced";
+    lastSyncedAt = new Date();
+  } catch (e) {
+    console.error(e);
+    syncStatus = "error";
+  }
+  renderSyncBadge();
+}
+
+async function pullRemote() {
+  if (!SYNC_ENABLED) return;
+  syncStatus = "syncing";
+  renderSyncBadge();
+  try {
+    const remote = await pantryGet();
+    if (remote && (!state.updatedAt || (remote.updatedAt && remote.updatedAt > state.updatedAt))) {
+      state = normalize(remote);
+      save();
+      render();
+    } else if (!remote) {
+      // Nothing stored yet — seed the shared basket with what we have.
+      await pantryPost(state);
+    }
+    syncStatus = "synced";
+    lastSyncedAt = new Date();
+  } catch (e) {
+    console.error(e);
+    syncStatus = "error";
+  }
+  renderSyncBadge();
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(pullRemote, 15000);
+}
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) pullRemote();
+});
+
+function syncBadgeContent() {
+  if (!SYNC_ENABLED) return { text: "💾 Saved on this device only", color: "var(--text-faint)" };
+  if (syncStatus === "syncing") return { text: "🔄 Syncing…", color: "var(--text-faint)" };
+  if (syncStatus === "error") return { text: "⚠️ Sync hiccup, retrying…", color: "var(--danger)" };
+  const time = lastSyncedAt ? lastSyncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  return { text: `🔗 Synced${time ? " · " + time : ""}`, color: "var(--sage)" };
+}
+function renderSyncBadge() {
+  const el = document.getElementById("syncBadge");
+  if (!el) return;
+  const { text, color } = syncBadgeContent();
+  el.textContent = text;
+  el.style.color = color;
+}
+
+// ---------- SVG plant ----------
+function gardenPlantSvg(stageIdx) {
+  const stemHeights = [0, 18, 34, 48, 58, 62];
+  const leafScales = [0, 0.7, 0.9, 1, 1.1, 1.2];
+  const stemHeight = stemHeights[stageIdx];
+  const leafScale = leafScales[stageIdx];
+  const showBud = stageIdx === 3;
+  const showFlower = stageIdx >= 4;
+  const petal = "var(--berry)";
+
+  let stem = "";
+  if (stemHeight > 0) {
+    stem = `<path d="M 60 100 C 60 ${100 - stemHeight * 0.6}, 58 ${100 - stemHeight}, 60 ${100 - stemHeight}" stroke="var(--sage)" stroke-width="4" stroke-linecap="round" fill="none" class="sway" />`;
+  }
+  let leaves = "";
+  if (stemHeight > 10) {
+    const y1 = 100 - stemHeight * 0.45;
+    const y2 = 100 - stemHeight * 0.65;
+    leaves = `
+      <ellipse cx="44" cy="${y1}" rx="${14 * leafScale}" ry="${8 * leafScale}" fill="var(--sage)" transform="rotate(-25 44 ${y1})" />
+      <ellipse cx="76" cy="${y2}" rx="${14 * leafScale}" ry="${8 * leafScale}" fill="var(--sage)" transform="rotate(25 76 ${y2})" />
+    `;
+  }
+  let bud = showBud ? `<circle cx="60" cy="${100 - stemHeight}" r="7" fill="${petal}" opacity="0.8" />` : "";
+  let flower = "";
+  if (showFlower) {
+    const petals = [0, 60, 120, 180, 240, 300].map((angle) =>
+      `<ellipse cx="0" cy="-9" rx="6" ry="9" fill="${petal}" opacity="0.9" transform="rotate(${angle})" />`
+    ).join("");
+    flower = `<g transform="translate(60 ${100 - stemHeight})">${petals}<circle r="6" fill="var(--sun)" /></g>`;
+  }
+  const seedMound = stemHeight === 0 ? `<ellipse cx="60" cy="98" rx="10" ry="5" fill="var(--sage)" opacity="0.6" />` : "";
+
+  return `
+  <svg width="120" height="130" viewBox="0 0 120 130" style="flex-shrink:0">
+    <ellipse cx="60" cy="112" rx="34" ry="6" fill="var(--sage-soft)" />
+    ${stem}${leaves}${bud}${flower}${seedMound}
+    <path d="M 40 100 L 80 100 L 74 122 C 74 126, 46 126, 46 122 Z" fill="var(--berry)" />
+    <rect x="38" y="96" width="44" height="7" rx="3.5" fill="var(--berry-soft)" stroke="var(--berry)" stroke-width="1.5" />
+  </svg>`;
+}
+
+// ---------- render ----------
+function render() {
+  const app = document.getElementById("app");
+  const stageIdx = getStageIndex(state.lifetimePoints);
+  const stage = STAGES[stageIdx];
+  const nextStage = STAGES[stageIdx + 1];
+  const progressPct = nextStage
+    ? Math.round(((state.lifetimePoints - stage.min) / (nextStage.min - stage.min)) * 100)
+    : 100;
+
+  const headerNames = state.players.map((p) => {
+    if (ui.editingPlayer === p.id) {
+      return `
+        <div class="row" style="gap:4px">
+          <input id="editNameInput" class="fade-in" style="font-size:12px;border-radius:999px;padding:4px 10px;width:100px" value="${esc(p.name)}" data-player="${p.id}" />
+          <button class="btn" style="color:var(--sage)" onclick="renamePlayer('${p.id}', document.getElementById('editNameInput').value)">✔</button>
+        </div>`;
+    }
+    return `
+      <button class="btn pill" style="background:${p.color}1A;color:${p.color}" onclick="ui.editingPlayer='${p.id}'; render(); document.getElementById('editNameInput')?.focus();">
+        ${esc(p.name)} <span style="opacity:.5">✎</span>
+      </button>`;
+  }).join("");
+
+  const badge = syncBadgeContent();
+  const setupBanner = !SYNC_ENABLED ? `
+    <div class="card" style="padding:12px 14px;margin-bottom:16px;background:var(--sun-soft);border-color:transparent">
+      <p style="margin:0;font-size:12px;color:var(--text)">
+        <b>Not synced yet.</b> To share this garden with your partner, grab a free Pantry ID at
+        <a class="link" href="https://getpantry.cloud" target="_blank" rel="noopener">getpantry.cloud</a> (just an email, no password),
+        then paste it into the <code>PANTRY_ID</code> constant near the top of this file and redeploy. Until then, everything's saved only on this device.
+      </p>
+    </div>` : "";
+
+  const jars = state.players.map((p) => `
+    <div class="card" style="padding:14px" >
+      <div class="row" style="gap:10px">
+        <div class="avatar" style="background:${p.color}">${esc(p.initial)}</div>
+        <div style="min-width:0">
+          <p style="margin:0;font-size:12px;font-weight:700;color:var(--text-muted)">${esc(p.name)}'s points</p>
+          <p class="display" style="margin:2px 0 0;font-size:24px;font-weight:700;line-height:1;color:${p.color}">🪙 ${num(p.points, 0)}</p>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  const choreCards = state.chores.map((chore) => {
+    const assigned = playerById(chore.assignedTo);
+    const lastPlayer = playerById(chore.lastDoneBy);
+    const lastLine = lastPlayer
+      ? `Last: <span style="color:${lastPlayer.color};font-weight:700">${esc(lastPlayer.name)}</span> · ${formatRelative(chore.lastDoneAt)}`
+      : "Never done yet";
+    const avatarBtns = state.players.map((p) => `
+      <button class="btn avatar" style="background:${p.color};width:32px;height:32px;font-size:12px" title="Mark done by ${esc(p.name)}" onclick="logChore('${chore.id}','${p.id}')">${esc(p.initial)}</button>
+    `).join("");
+    return `
+    <div class="card" style="padding:14px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <p style="margin:0;font-weight:800;font-size:14px">${esc(chore.name)}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:var(--text-faint)">${lastLine}</p>
+        </div>
+        <div class="row" style="gap:6px">
+          <span class="pill coin" style="background:var(--sun-soft);color:var(--sun)">${num(chore.points, 0)}</span>
+          <button class="icon-trash btn" style="color:var(--text-faint)" title="Remove chore" onclick="deleteChore('${chore.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="row" style="justify-content:space-between;margin-top:10px">
+        <button class="btn pill" style="background:${assigned?.color || '#ccc'}1A;color:${assigned?.color || '#888'}" title="Switch who's on this chore" onclick="swapAssignment('${chore.id}')">
+          Turn: ${esc(assigned?.name || "—")} ⇄
+        </button>
+        <div class="row" style="gap:6px">${avatarBtns}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  const addChoreCard = ui.addingChore ? `
+    <div class="card fade-in" style="padding:14px;border:1px dashed var(--sage)">
+      <p style="margin:0 0 8px;font-size:12px;font-weight:800;color:var(--sage)">New chore</p>
+      <input id="newChoreName" placeholder="Chore name" style="width:100%;margin-bottom:8px" />
+      <div class="row" style="gap:8px">
+        <label style="font-size:12px;font-weight:700;color:var(--text-faint)">Points</label>
+        <input id="newChorePoints" type="number" min="1" value="5" style="width:64px" />
+        <div style="flex:1"></div>
+        <button class="btn" style="color:var(--text-faint)" onclick="ui.addingChore=false; render();">✕</button>
+        <button class="btn pill" style="background:var(--sage);color:#fff" onclick="addChore(document.getElementById('newChoreName').value, document.getElementById('newChorePoints').value); render();">✔ Save</button>
+      </div>
+    </div>` : "";
+
+  const rewardCards = state.rewards.map((reward) => {
+    const btns = state.players.map((p) => {
+      const canAfford = num(p.points, 0) >= reward.cost;
+      return `<button class="btn" style="flex:1;font-size:12px;font-weight:700;padding:6px 0;border-radius:8px;background:${canAfford ? p.color + "1A" : "#F1EBF7"};color:${canAfford ? p.color : "var(--text-faint)"}" ${canAfford ? "" : "disabled"} onclick="redeemReward('${reward.id}','${p.id}')">💗 ${esc(p.name.split(" ")[0])}</button>`;
+    }).join("");
+    return `
+    <div class="card" style="padding:14px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <p style="margin:0;font-weight:800;font-size:14px">${esc(reward.name)}</p>
+        <div class="row" style="gap:8px">
+          <span class="pill coin" style="background:var(--sun-soft);color:var(--sun)">${num(reward.cost, 0)}</span>
+          <button class="icon-trash btn" style="color:var(--text-faint)" title="Remove reward" onclick="deleteReward('${reward.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="row" style="gap:8px;margin-top:10px">${btns}</div>
+    </div>`;
+  }).join("");
+
+  const addRewardCard = ui.addingReward ? `
+    <div class="card fade-in" style="padding:14px;border:1px dashed var(--sage)">
+      <p style="margin:0 0 8px;font-size:12px;font-weight:800;color:var(--sage)">New reward</p>
+      <input id="newRewardName" placeholder="Reward name" style="width:100%;margin-bottom:8px" />
+      <div class="row" style="gap:8px">
+        <label style="font-size:12px;font-weight:700;color:var(--text-faint)">Cost</label>
+        <input id="newRewardCost" type="number" min="1" value="15" style="width:64px" />
+        <div style="flex:1"></div>
+        <button class="btn" style="color:var(--text-faint)" onclick="ui.addingReward=false; render();">✕</button>
+        <button class="btn pill" style="background:var(--sage);color:#fff" onclick="addReward(document.getElementById('newRewardName').value, document.getElementById('newRewardCost').value); render();">✔ Save</button>
+      </div>
+    </div>` : "";
+
+  const historyItems = state.history.map((h) => `
+    <div class="row fade-in" style="justify-content:space-between;font-size:12px;color:var(--text-muted);padding:2px 0">
+      <span><span style="color:${h.color}">●</span> ${esc(h.text)}</span>
+      <span style="font-weight:700;color:${h.delta > 0 ? "var(--sage)" : "var(--danger)"}">${h.delta > 0 ? "+" : ""}${h.delta} pts</span>
+    </div>`).join("");
+
+  app.innerHTML = `
+    <div class="row" style="justify-content:space-between;margin-bottom:4px">
+      <div class="row" style="gap:8px">
+        <span style="font-size:22px">🌷</span>
+        <h1 class="display" style="margin:0;font-size:22px;font-weight:700">Our Chore Garden</h1>
+      </div>
+      <div class="row" style="gap:6px">${headerNames}</div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-bottom:14px">
+      <span id="syncBadge" class="sync-badge" style="color:${badge.color}">${badge.text}</span>
+    </div>
+
+    ${setupBanner}
+
+    <div class="card" style="padding:18px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:18px">
+      ${gardenPlantSvg(stageIdx)}
+      <div style="flex:1;min-width:200px">
+        <p class="display" style="margin:0;font-size:18px;font-weight:700;color:var(--sage)">${stage.label}</p>
+        <p style="margin:2px 0 8px;font-size:12px;color:var(--text-muted)">${stage.hint} · grown together, from every chore either of you logs</p>
+        <div style="position:relative;height:12px;border-radius:999px;overflow:hidden;background:var(--sage-soft)">
+          <div style="position:absolute;inset:0;width:${progressPct}%;background:var(--sage);border-radius:999px;transition:width .5s ease"></div>
+        </div>
+        <div class="row" style="justify-content:space-between;margin-top:8px">
+          <span style="font-size:11px;color:var(--text-faint)">${nextStage ? `${state.lifetimePoints - stage.min} / ${nextStage.min - stage.min} pts to ${nextStage.label}` : "Max bloom reached 🌸"}</span>
+          <span style="font-size:11px;font-weight:700;color:var(--text-faint)">${state.lifetimePoints} lifetime pts</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pts-grid" style="margin-bottom:22px">${jars}</div>
+
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="row" style="gap:6px"><span>🧺</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Chores</h2></div>
+      <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingChore=true; render();">+ Add</button>
+    </div>
+    <div class="grid2" style="margin-bottom:22px">${choreCards}${addChoreCard}</div>
+
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="row" style="gap:6px"><span>🎁</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Rewards</h2></div>
+      <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingReward=true; render();">+ Add</button>
+    </div>
+    <div class="grid2" style="margin-bottom:22px">${rewardCards}${addRewardCard}</div>
+
+    ${state.history.length ? `
+    <div>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">Recent activity</p>
+      <div>${historyItems}</div>
+    </div>` : ""}
+  `;
+
+  // wire up enter-to-save on the add-chore / add-reward / rename inputs
+  const nc = document.getElementById("newChoreName");
+  if (nc) nc.addEventListener("keydown", (e) => { if (e.key === "Enter") { addChore(nc.value, document.getElementById("newChorePoints").value); render(); } });
+  const nr = document.getElementById("newRewardName");
+  if (nr) nr.addEventListener("keydown", (e) => { if (e.key === "Enter") { addReward(nr.value, document.getElementById("newRewardCost").value); render(); } });
+  const en = document.getElementById("editNameInput");
+  if (en) { en.focus(); en.addEventListener("keydown", (e) => { if (e.key === "Enter") renamePlayer(en.dataset.player, en.value); }); }
+}
+
+// ---------- init ----------
+render();
+if (SYNC_ENABLED) {
+  pullRemote().then(startPolling);
+}
+</script>
+</body>
+</html>
