@@ -23,6 +23,24 @@
     --berry: #EE6E9C;
     --berry-soft: #FBE3EC;
     --danger: #E8615A;
+    --input-bg: #FBF8FE;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1E1A28;
+    --card-bg: #292335;
+    --card-border: #3D3450;
+    --card-border-soft: #362E47;
+    --text: #F0EAF8;
+    --text-muted: #B7A9CC;
+    --text-faint: #8B7CA3;
+    --sage: #7FCBA6;
+    --sage-soft: #24382F;
+    --sun: #FFC857;
+    --sun-soft: #3A2F1A;
+    --berry: #FF93B8;
+    --berry-soft: #3D2434;
+    --danger: #FF8A82;
+    --input-bg: #221D2C;
   }
   * { box-sizing: border-box; }
   body {
@@ -34,6 +52,7 @@
     display: flex;
     justify-content: center;
     padding: 24px 12px;
+    transition: background 0.2s ease, color 0.2s ease;
   }
   .wrap { width: 100%; max-width: 720px; }
   .display { font-family: 'Baloo 2', cursive; }
@@ -41,7 +60,7 @@
     background: var(--card-bg);
     border: 1px solid var(--card-border-soft);
     border-radius: 16px;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, background 0.2s ease;
   }
   .card:hover { border-color: #5fa58877; }
   button { font-family: inherit; cursor: pointer; border: none; }
@@ -51,11 +70,12 @@
   .btn:hover:not(:disabled) { filter: brightness(1.06); }
   input {
     font-family: inherit;
-    background: #FBF8FE;
+    background: var(--input-bg);
     border: 1px solid var(--card-border);
     color: var(--text);
     border-radius: 8px;
     padding: 6px 10px;
+    transition: background 0.2s ease;
   }
   input:focus { outline: none; border-color: var(--sage); }
   .fade-in { animation: fadeIn 0.25s ease; }
@@ -75,6 +95,10 @@
     color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
   }
   .sync-badge { font-size: 11px; font-weight: 700; }
+  .theme-btn {
+    width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+    background: var(--card-border-soft); font-size: 14px; flex-shrink: 0;
+  }
   a.link { color: var(--sage); font-weight: 700; text-decoration: none; }
   a.link:hover { text-decoration: underline; }
 </style>
@@ -83,6 +107,24 @@
 <div class="wrap" id="app"></div>
 
 <script>
+// ---------- theme (light/dark — a per-device preference, not synced) ----------
+const THEME_KEY = "choreGardenTheme";
+function getTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+}
+function toggleTheme() {
+  const next = getTheme() === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+  render();
+}
+applyTheme(getTheme()); // set immediately, before first render, to avoid a flash of the wrong theme
+
 /* =========================================================================
    Sync is already configured for this household's shared garden — it
    points at your Firebase Realtime Database, so both of you syncing
@@ -665,7 +707,10 @@ function render() {
         <span style="font-size:22px">🌷</span>
         <h1 class="display" style="margin:0;font-size:22px;font-weight:700">Our Chore Garden</h1>
       </div>
-      <div class="row" style="gap:6px">${headerNames}</div>
+      <div class="row" style="gap:6px">
+        ${headerNames}
+        <button class="btn theme-btn" title="Toggle dark mode" onclick="toggleTheme()">${getTheme() === "dark" ? "☀️" : "🌙"}</button>
+      </div>
     </div>
     <div class="row" style="justify-content:flex-end;margin-bottom:14px">
       <span id="syncBadge" class="sync-badge" style="color:${badge.color}">${badge.text}</span>
