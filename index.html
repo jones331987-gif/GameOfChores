@@ -178,6 +178,8 @@ const FREQUENCIES = [
   { id: "weekly", label: "Weekly", emoji: "📅", doneLabel: "this week" },
   { id: "monthly", label: "Monthly", emoji: "🗓️", doneLabel: "this month" },
 ];
+// Where a task can live: one of the three repeating sections, or the one-off list.
+const TASK_KINDS = [...FREQUENCIES, { id: "oneoff", label: "One-off", emoji: "🎯" }];
 // Chores saved before frequencies existed: the original starter chores get a
 // sensible slot, anything else lands in Weekly (and can be edited from there).
 const LEGACY_CHORE_FREQUENCY = { c1: "daily", c3: "daily", c7: "daily", c2: "weekly", c4: "weekly", c6: "weekly", c5: "monthly" };
@@ -448,7 +450,7 @@ function saveEdit(type, id) {
   const name = nameEl.value.trim();
   const value = Math.max(1, parseInt(valEl.value, 10) || 1);
   if (!name) { nameEl.focus(); return; }
-  const frequency = freqEl ? freqEl.value : null;
+  const target = freqEl ? freqEl.value : null; // daily | weekly | monthly | oneoff
   ui.editing = null;
   update((s) => {
     if (type === "chore") {
@@ -456,12 +458,23 @@ function saveEdit(type, id) {
       if (!c) return;
       c.name = name;
       c.points = value;
-      if (FREQUENCIES.some((f) => f.id === frequency)) c.frequency = frequency;
+      if (target === "oneoff") {
+        // Chore -> one-off: leaves the repeating lists (last-done / turn info doesn't apply to one-offs).
+        s.chores = s.chores.filter((x) => x.id !== id);
+        s.oneOffTasks.push({ id: c.id, name, points: value });
+      } else if (FREQUENCIES.some((f) => f.id === target)) {
+        c.frequency = target;
+      }
     } else if (type === "oneoff") {
       const t = s.oneOffTasks.find((x) => x.id === id);
       if (!t) return;
       t.name = name;
       t.points = value;
+      if (FREQUENCIES.some((f) => f.id === target)) {
+        // One-off -> repeating chore: starts fresh, with the first person's turn.
+        s.oneOffTasks = s.oneOffTasks.filter((x) => x.id !== id);
+        s.chores.push({ id: t.id, name, points: value, frequency: target, assignedTo: s.players[0].id, lastDoneBy: null, lastDoneAt: null });
+      }
     } else if (type === "reward") {
       const r = s.rewards.find((x) => x.id === id);
       if (!r) return;
@@ -571,9 +584,10 @@ function editCardHtml(type, item) {
   const isReward = type === "reward";
   const accent = type === "oneoff" ? "var(--berry)" : "var(--sage)";
   const noun = isChore ? "chore" : isReward ? "reward" : "one-off task";
-  const freqSelect = isChore ? `
-        <select id="editFreq_${item.id}">
-          ${FREQUENCIES.map((f) => `<option value="${f.id}" ${f.id === item.frequency ? "selected" : ""}>${f.emoji} ${f.label}</option>`).join("")}
+  const currentKind = isChore ? item.frequency : "oneoff";
+  const freqSelect = !isReward ? `
+        <select id="editFreq_${item.id}" title="Move to…">
+          ${TASK_KINDS.map((f) => `<option value="${f.id}" ${f.id === currentKind ? "selected" : ""}>${f.emoji} ${f.label}</option>`).join("")}
         </select>` : "";
   return `
     <div class="card fade-in" style="padding:14px;border:1px dashed ${accent}">
