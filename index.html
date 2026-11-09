@@ -54,7 +54,7 @@
     padding: 24px 12px;
     transition: background 0.2s ease, color 0.2s ease;
   }
-  .wrap { width: 100%; max-width: 1120px; }
+  .wrap { width: 100%; max-width: 1360px; }
   .display { font-family: 'Baloo 2', cursive; }
   .card {
     background: var(--card-bg);
@@ -92,14 +92,37 @@
   .row { display: flex; align-items: center; }
   /* Cards flow into as many columns as fit; sections sit side by side on wide screens. */
   .cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-  .cols3, .cols2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: start; }
-  @media (min-width: 860px) {
-    .cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .cols2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  .sect { margin-bottom: 22px; min-width: 0; }
+  .cols3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: start; }
+  .sect { margin-bottom: 22px; min-width: 0; scroll-margin-top: 56px; }
   .sect-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .pts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
+  .pts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sect-title { margin: 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+
+  /* Page layout: phone = one column; tablet = rewards + activity side by side;
+     desktop = chores on the left, a sidebar (points, rewards, activity) on the right. */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: start; }
+  .jump { display: flex; gap: 6px; overflow-x: auto; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; margin-bottom: 10px; scrollbar-width: none; }
+  .jump::-webkit-scrollbar { display: none; }
+  .jump button { flex-shrink: 0; background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--card-border-soft); }
+  @media (min-width: 860px) {
+    .jump { display: none; }
+    .cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .area-points, .area-main { grid-column: 1 / -1; }
+    .area-points .pts-grid { max-width: 520px; }
+  }
+  @media (min-width: 1180px) {
+    .layout { grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: auto auto 1fr; }
+    .area-main { grid-column: 1; grid-row: 1 / span 3; }
+    .area-points { grid-column: 2; grid-row: 1; }
+    .area-points .pts-grid { max-width: none; }
+    .area-rewards { grid-column: 2; grid-row: 2; }
+    .area-activity { grid-column: 2; grid-row: 3; }
+  }
+  .activity-card { padding: 6px 14px; max-height: 420px; overflow-y: auto; }
+  .activity-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--card-border-soft); }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-dot { width: 10px; height: 10px; border-radius: 999px; flex-shrink: 0; }
   .pill { border-radius: 999px; font-weight: 700; font-size: 12px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; }
   .icon-trash, .icon-edit { background: none; padding: 2px 4px; }
   .icon-edit { color: var(--text-faint); font-size: 13px; }
@@ -356,7 +379,7 @@ function logChore(choreId, playerId) {
     chore.lastDoneBy = playerId;
     chore.lastDoneAt = now;
     s.history.unshift({ id: uid("h"), at: now, text: `${player.name} finished "${chore.name}"`, delta: chore.points, color: player.color });
-    s.history = s.history.slice(0, 12);
+    s.history = s.history.slice(0, 30);
   });
 }
 
@@ -377,7 +400,7 @@ function redeemReward(rewardId, playerId) {
     const now = new Date().toISOString();
     player.points -= reward.cost;
     s.history.unshift({ id: uid("h"), at: now, text: `${player.name} redeemed "${reward.name}"`, delta: -reward.cost, color: player.color });
-    s.history = s.history.slice(0, 12);
+    s.history = s.history.slice(0, 30);
   });
 }
 
@@ -425,7 +448,7 @@ function completeOneOffTask(taskId, playerId) {
     s.lifetimePoints = num(s.lifetimePoints, 0) + task.points;
     s.oneOffTasks = s.oneOffTasks.filter((t) => t.id !== taskId);
     s.history.unshift({ id: uid("h"), at: now, text: `${player.name} completed "${task.name}"`, delta: task.points, color: player.color });
-    s.history = s.history.slice(0, 12);
+    s.history = s.history.slice(0, 30);
   });
 }
 
@@ -440,6 +463,11 @@ function deleteOneOffTask(id) {
 }
 
 // ---------- editing chores / one-off tasks / rewards in place ----------
+function jumpTo(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function startEdit(type, id) {
   ui.editing = { type, id };
   ui.focusId = "editName_" + id;
@@ -705,11 +733,11 @@ function render() {
       </div>
     </div>` : "";
     return `
-    <section class="sect">
+    <section class="sect" id="sec-${freq.id}">
     <div class="sect-head">
       <div class="row" style="gap:6px">
         <span>${freq.emoji}</span>
-        <h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">${freq.label}</h2>
+        <h2 class="display sect-title">${freq.label}</h2>
         ${list.length ? `<span style="font-size:11px;font-weight:700;color:var(--text-faint)">${doneCount}/${list.length} done</span>` : ""}
       </div>
       <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingChore='${freq.id}'; render();">+ Add</button>
@@ -785,44 +813,71 @@ function render() {
       </div>
     </div>` : "";
 
-  const historyItems = state.history.map((h) => `
-    <div class="row fade-in" style="justify-content:space-between;font-size:12px;color:var(--text-muted);padding:2px 0">
-      <span><span style="color:${h.color}">●</span> ${esc(h.text)}</span>
-      <span style="font-weight:700;color:${h.delta > 0 ? "var(--sage)" : "var(--danger)"}">${h.delta > 0 ? "+" : ""}${h.delta} pts</span>
-    </div>`).join("");
+  const historyItems = state.history.map((h) => {
+    const when = new Date(h.at);
+    const time = isNaN(when) ? "" : when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const spent = h.delta < 0;
+    return `
+    <div class="activity-row">
+      <span class="activity-dot" style="background:${h.color}"></span>
+      <div style="flex:1;min-width:0">
+        <p style="margin:0;font-size:13px;font-weight:700;overflow-wrap:anywhere">${esc(h.text)}</p>
+        <p style="margin:1px 0 0;font-size:11px;color:var(--text-faint)">${formatRelative(h.at)}${time ? " · " + time : ""}</p>
+      </div>
+      <span class="pill coin" style="background:${spent ? "var(--berry-soft)" : "var(--sun-soft)"};color:${spent ? "var(--berry)" : "var(--sun)"}">${spent ? "" : "+"}${h.delta}</span>
+    </div>`;
+  }).join("");
 
+  const sectionTitle = (emoji, text) => `<div class="row" style="gap:6px"><span>${emoji}</span><h2 class="display sect-title">${text}</h2></div>`;
   const gardenView = `
     ${setupBanner}
 
-    <div class="pts-grid" style="margin-bottom:22px">${jars}</div>
+    <nav class="jump">
+      <button class="btn pill" onclick="jumpTo('sec-daily')">☀️ Daily</button>
+      <button class="btn pill" onclick="jumpTo('sec-weekly')">📅 Weekly</button>
+      <button class="btn pill" onclick="jumpTo('sec-monthly')">🗓️ Monthly</button>
+      <button class="btn pill" onclick="jumpTo('sec-oneoff')">🎯 One-off</button>
+      <button class="btn pill" onclick="jumpTo('sec-rewards')">🎁 Rewards</button>
+      <button class="btn pill" onclick="jumpTo('sec-activity')">🕘 Activity</button>
+    </nav>
 
-    <div class="cols3">${FREQUENCIES.map((f) => choreSectionHtml(f)).join("")}</div>
+    <div class="layout">
+      <div class="area-points"><div class="pts-grid" style="margin-bottom:22px">${jars}</div></div>
 
-    <div class="cols2">
-      <section class="sect">
-        <div class="sect-head">
-          <div class="row" style="gap:6px"><span>🎯</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">One-off Tasks</h2></div>
-          <button class="btn pill" style="background:var(--berry-soft);color:var(--berry)" onclick="ui.addingOneOff=true; render();">+ Add</button>
+      <div class="area-main">
+        <div class="cols3">
+          ${choreSectionHtml(FREQUENCIES[0])}
+          ${choreSectionHtml(FREQUENCIES[1])}
+          <div style="min-width:0">
+            ${choreSectionHtml(FREQUENCIES[2])}
+            <section class="sect" id="sec-oneoff">
+              <div class="sect-head">
+                ${sectionTitle("🎯", "One-off Tasks")}
+                <button class="btn pill" style="background:var(--berry-soft);color:var(--berry)" onclick="ui.addingOneOff=true; render();">+ Add</button>
+              </div>
+              ${state.oneOffTasks.length || ui.addingOneOff ? `
+              <div class="cardgrid">${oneOffCards}${addOneOffCard}</div>` : `
+              <p style="margin:0;font-size:12px;color:var(--text-faint)">Nothing special on the list right now — tap "+ Add" for a one-time task, like fixing the shelf or returning a package.</p>`}
+            </section>
+          </div>
         </div>
-        ${state.oneOffTasks.length || ui.addingOneOff ? `
-        <div class="cardgrid">${oneOffCards}${addOneOffCard}</div>` : `
-        <p style="margin:0;font-size:12px;color:var(--text-faint)">Nothing special on the list right now — tap "+ Add" for a task that's a one-time thing, like fixing the shelf or returning a package.</p>`}
-      </section>
+      </div>
 
-      <section class="sect">
+      <section class="sect area-rewards" id="sec-rewards">
         <div class="sect-head">
-          <div class="row" style="gap:6px"><span>🎁</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Rewards</h2></div>
+          ${sectionTitle("🎁", "Rewards")}
           <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingReward=true; render();">+ Add</button>
         </div>
         <div class="cardgrid">${rewardCards}${addRewardCard}</div>
       </section>
-    </div>
 
-    ${state.history.length ? `
-    <div>
-      <p style="margin:0 0 8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">Recent activity</p>
-      <div style="max-width:560px">${historyItems}</div>
-    </div>` : ""}
+      <section class="sect area-activity" id="sec-activity">
+        <div class="sect-head">${sectionTitle("🕘", "Recent activity")}</div>
+        <div class="card activity-card">
+          ${state.history.length ? historyItems : `<p style="margin:10px 0;font-size:12px;color:var(--text-faint)">Nothing logged yet — finished chores and redeemed rewards show up here.</p>`}
+        </div>
+      </section>
+    </div>
   `;
 
   // Snapshot any open form fields so a background sync re-render doesn't wipe what's being typed.
