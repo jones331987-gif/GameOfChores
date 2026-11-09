@@ -80,15 +80,25 @@
   input:focus { outline: none; border-color: var(--sage); }
   .fade-in { animation: fadeIn 0.25s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-  .sway { animation: sway 3.5s ease-in-out infinite; transform-origin: bottom center; }
-  @keyframes sway { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+  select {
+    font-family: inherit;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 6px 10px;
+  }
+  select:focus { outline: none; border-color: var(--sage); }
   .row { display: flex; align-items: center; }
   .grid2 { display: grid; grid-template-columns: 1fr; gap: 12px; }
   @media (min-width: 640px) { .grid2 { grid-template-columns: 1fr 1fr; } }
   .pts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .pill { border-radius: 999px; font-weight: 700; font-size: 12px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; }
+  .icon-trash, .icon-edit { background: none; padding: 2px 4px; }
+  .icon-edit { color: var(--text-faint); font-size: 13px; }
   .icon-trash { opacity: 0; transition: opacity 0.15s ease; }
   .card:hover .icon-trash { opacity: 1; }
+  @media (hover: none) { .icon-trash { opacity: 1; } }
   .coin::before { content: "🪙"; font-size: 11px; }
   .avatar {
     width: 32px; height: 32px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
@@ -145,13 +155,13 @@ const DEFAULT_PLAYERS = [
 ];
 
 const DEFAULT_CHORES = [
-  { id: "c1", name: "Dishes", points: 5, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
-  { id: "c2", name: "Laundry", points: 8, assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
-  { id: "c3", name: "Take out trash", points: 3, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
-  { id: "c4", name: "Vacuum / mop", points: 7, assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
-  { id: "c5", name: "Clean bathroom", points: 10, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
-  { id: "c6", name: "Grocery run", points: 6, assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
-  { id: "c7", name: "Cook dinner", points: 6, assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c1", name: "Dishes", points: 5, frequency: "daily", assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c3", name: "Take out trash", points: 3, frequency: "daily", assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c7", name: "Cook dinner", points: 6, frequency: "daily", assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
+  { id: "c2", name: "Laundry", points: 8, frequency: "weekly", assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
+  { id: "c4", name: "Vacuum / mop", points: 7, frequency: "weekly", assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
+  { id: "c6", name: "Grocery run", points: 6, frequency: "weekly", assignedTo: "p2", lastDoneBy: null, lastDoneAt: null },
+  { id: "c5", name: "Clean bathroom", points: 10, frequency: "monthly", assignedTo: "p1", lastDoneBy: null, lastDoneAt: null },
 ];
 
 const DEFAULT_REWARDS = [
@@ -163,14 +173,14 @@ const DEFAULT_REWARDS = [
 
 const DEFAULT_ONE_OFF_TASKS = [];
 
-const STAGES = [
-  { min: 0, label: "Seed", hint: "Plant your first chore to get started" },
-  { min: 15, label: "Sprout", hint: "Something's growing!" },
-  { min: 40, label: "Sapling", hint: "Look at that little stem go" },
-  { min: 80, label: "Budding", hint: "A bud is forming" },
-  { min: 150, label: "Blooming", hint: "Full bloom, you two are a team" },
-  { min: 250, label: "Flourishing", hint: "A whole flourishing garden" },
+const FREQUENCIES = [
+  { id: "daily", label: "Daily", emoji: "☀️", doneLabel: "today" },
+  { id: "weekly", label: "Weekly", emoji: "📅", doneLabel: "this week" },
+  { id: "monthly", label: "Monthly", emoji: "🗓️", doneLabel: "this month" },
 ];
+// Chores saved before frequencies existed: the original starter chores get a
+// sensible slot, anything else lands in Weekly (and can be edited from there).
+const LEGACY_CHORE_FREQUENCY = { c1: "daily", c3: "daily", c7: "daily", c2: "weekly", c4: "weekly", c6: "weekly", c5: "monthly" };
 
 function defaultState() {
   return {
@@ -210,6 +220,7 @@ function normalize(raw) {
         id: c.id || uid("c"),
         name: c.name || "Chore",
         points: num(c.points, 1),
+        frequency: FREQUENCIES.some((f) => f.id === c.frequency) ? c.frequency : (LEGACY_CHORE_FREQUENCY[c.id] || "weekly"),
         assignedTo: c.assignedTo || players[0].id,
         lastDoneBy: c.lastDoneBy || null,
         lastDoneAt: c.lastDoneAt || null,
@@ -270,10 +281,18 @@ function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function getStageIndex(lifetimePoints) {
-  let idx = 0;
-  for (let i = 0; i < STAGES.length; i++) if (lifetimePoints >= STAGES[i].min) idx = i;
-  return idx;
+// A chore counts as "done" for the current day / week (Mon-Sun) / month.
+function periodStart(frequency) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  if (frequency === "weekly") d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  else if (frequency === "monthly") d.setDate(1);
+  return d;
+}
+function isDoneThisPeriod(chore) {
+  if (!chore || !chore.lastDoneAt) return false;
+  const t = new Date(chore.lastDoneAt);
+  return !isNaN(t) && t >= periodStart(chore.frequency);
 }
 
 function esc(str) {
@@ -282,7 +301,7 @@ function esc(str) {
 
 // ---------- local state ----------
 let state = load();
-let ui = { addingChore: false, addingReward: false, addingOneOff: false, editingPlayer: null };
+let ui = { editing: null, focusId: null, addingChore: false, addingReward: false, addingOneOff: false, editingPlayer: null };
 let syncStatus = SYNC_ENABLED ? "syncing" : "offline"; // offline | syncing | synced | error
 let lastSyncedAt = null;
 let pollTimer = null;
@@ -353,14 +372,16 @@ function redeemReward(rewardId, playerId) {
   });
 }
 
-function addChore(name, points) {
+// `frequency` is also the id of the section whose add-form is open (ui.addingChore).
+function addChore(name, points, frequency) {
   name = (name || "").trim();
   points = Math.max(1, parseInt(points, 10) || 1);
+  if (!FREQUENCIES.some((f) => f.id === frequency)) frequency = "weekly";
   if (!name) return;
-  update((s) => {
-    s.chores.push({ id: uid("c"), name, points, assignedTo: s.players[0].id, lastDoneBy: null, lastDoneAt: null });
-  });
   ui.addingChore = false;
+  update((s) => {
+    s.chores.push({ id: uid("c"), name, points, frequency, assignedTo: s.players[0].id, lastDoneBy: null, lastDoneAt: null });
+  });
 }
 
 function addReward(name, cost) {
@@ -407,6 +428,47 @@ function deleteReward(id) {
 }
 function deleteOneOffTask(id) {
   update((s) => { s.oneOffTasks = s.oneOffTasks.filter((t) => t.id !== id); });
+}
+
+// ---------- editing chores / one-off tasks / rewards in place ----------
+function startEdit(type, id) {
+  ui.editing = { type, id };
+  ui.focusId = "editName_" + id;
+  render();
+}
+function cancelEdit() {
+  ui.editing = null;
+  render();
+}
+function saveEdit(type, id) {
+  const nameEl = document.getElementById("editName_" + id);
+  const valEl = document.getElementById("editVal_" + id);
+  const freqEl = document.getElementById("editFreq_" + id);
+  if (!nameEl || !valEl) return;
+  const name = nameEl.value.trim();
+  const value = Math.max(1, parseInt(valEl.value, 10) || 1);
+  if (!name) { nameEl.focus(); return; }
+  const frequency = freqEl ? freqEl.value : null;
+  ui.editing = null;
+  update((s) => {
+    if (type === "chore") {
+      const c = s.chores.find((x) => x.id === id);
+      if (!c) return;
+      c.name = name;
+      c.points = value;
+      if (FREQUENCIES.some((f) => f.id === frequency)) c.frequency = frequency;
+    } else if (type === "oneoff") {
+      const t = s.oneOffTasks.find((x) => x.id === id);
+      if (!t) return;
+      t.name = name;
+      t.points = value;
+    } else if (type === "reward") {
+      const r = s.rewards.find((x) => x.id === id);
+      if (!r) return;
+      r.name = name;
+      r.cost = value;
+    }
+  });
 }
 
 function renamePlayer(id, name) {
@@ -503,58 +565,34 @@ function renderSyncBadge() {
   el.style.color = color;
 }
 
-// ---------- SVG plant ----------
-function gardenPlantSvg(stageIdx) {
-  const stemHeights = [0, 18, 34, 48, 58, 62];
-  const leafScales = [0, 0.7, 0.9, 1, 1.1, 1.2];
-  const stemHeight = stemHeights[stageIdx];
-  const leafScale = leafScales[stageIdx];
-  const showBud = stageIdx === 3;
-  const showFlower = stageIdx >= 4;
-  const petal = "var(--berry)";
-
-  let stem = "";
-  if (stemHeight > 0) {
-    stem = `<path d="M 60 100 C 60 ${100 - stemHeight * 0.6}, 58 ${100 - stemHeight}, 60 ${100 - stemHeight}" stroke="var(--sage)" stroke-width="4" stroke-linecap="round" fill="none" class="sway" />`;
-  }
-  let leaves = "";
-  if (stemHeight > 10) {
-    const y1 = 100 - stemHeight * 0.45;
-    const y2 = 100 - stemHeight * 0.65;
-    leaves = `
-      <ellipse cx="44" cy="${y1}" rx="${14 * leafScale}" ry="${8 * leafScale}" fill="var(--sage)" transform="rotate(-25 44 ${y1})" />
-      <ellipse cx="76" cy="${y2}" rx="${14 * leafScale}" ry="${8 * leafScale}" fill="var(--sage)" transform="rotate(25 76 ${y2})" />
-    `;
-  }
-  let bud = showBud ? `<circle cx="60" cy="${100 - stemHeight}" r="7" fill="${petal}" opacity="0.8" />` : "";
-  let flower = "";
-  if (showFlower) {
-    const petals = [0, 60, 120, 180, 240, 300].map((angle) =>
-      `<ellipse cx="0" cy="-9" rx="6" ry="9" fill="${petal}" opacity="0.9" transform="rotate(${angle})" />`
-    ).join("");
-    flower = `<g transform="translate(60 ${100 - stemHeight})">${petals}<circle r="6" fill="var(--sun)" /></g>`;
-  }
-  const seedMound = stemHeight === 0 ? `<ellipse cx="60" cy="98" rx="10" ry="5" fill="var(--sage)" opacity="0.6" />` : "";
-
+// ---------- edit card (shared by chores, one-off tasks and rewards) ----------
+function editCardHtml(type, item) {
+  const isChore = type === "chore";
+  const isReward = type === "reward";
+  const accent = type === "oneoff" ? "var(--berry)" : "var(--sage)";
+  const noun = isChore ? "chore" : isReward ? "reward" : "one-off task";
+  const freqSelect = isChore ? `
+        <select id="editFreq_${item.id}">
+          ${FREQUENCIES.map((f) => `<option value="${f.id}" ${f.id === item.frequency ? "selected" : ""}>${f.emoji} ${f.label}</option>`).join("")}
+        </select>` : "";
   return `
-  <svg width="120" height="130" viewBox="0 0 120 130" style="flex-shrink:0">
-    <ellipse cx="60" cy="112" rx="34" ry="6" fill="var(--sage-soft)" />
-    ${stem}${leaves}${bud}${flower}${seedMound}
-    <path d="M 40 100 L 80 100 L 74 122 C 74 126, 46 126, 46 122 Z" fill="var(--berry)" />
-    <rect x="38" y="96" width="44" height="7" rx="3.5" fill="var(--berry-soft)" stroke="var(--berry)" stroke-width="1.5" />
-  </svg>`;
+    <div class="card fade-in" style="padding:14px;border:1px dashed ${accent}">
+      <p style="margin:0 0 8px;font-size:12px;font-weight:800;color:${accent}">Edit ${noun}</p>
+      <input id="editName_${item.id}" value="${esc(item.name)}" placeholder="Name" style="width:100%;margin-bottom:8px" />
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <label style="font-size:12px;font-weight:700;color:var(--text-faint)">${isReward ? "Cost" : "Points"}</label>
+        <input id="editVal_${item.id}" type="number" min="1" value="${num(isReward ? item.cost : item.points, 1)}" style="width:64px" />
+        ${freqSelect}
+        <div style="flex:1"></div>
+        <button class="btn" style="background:none;color:var(--text-faint)" title="Cancel" onclick="cancelEdit()">✕</button>
+        <button class="btn pill" style="background:${accent};color:#fff" onclick="saveEdit('${type}','${item.id}')">✔ Save</button>
+      </div>
+    </div>`;
 }
 
 // ---------- render ----------
 function render() {
   const app = document.getElementById("app");
-  const stageIdx = getStageIndex(state.lifetimePoints);
-  const stage = STAGES[stageIdx];
-  const nextStage = STAGES[stageIdx + 1];
-  const progressPct = nextStage
-    ? Math.round(((state.lifetimePoints - stage.min) / (nextStage.min - stage.min)) * 100)
-    : 100;
-
   const headerNames = state.players.map((p) => {
     if (ui.editingPlayer === p.id) {
       return `
@@ -591,9 +629,16 @@ function render() {
     </div>
   `).join("");
 
-  const choreCards = state.chores.map((chore) => {
+  const editBtn = (type, id) => `<button class="icon-edit btn" title="Edit" onclick="startEdit('${type}','${id}')">✎</button>`;
+  const isEditing = (type, id) => !!ui.editing && ui.editing.type === type && ui.editing.id === id;
+
+  const choreCardHtml = (chore) => {
+    if (isEditing("chore", chore.id)) return editCardHtml("chore", chore);
     const assigned = playerById(chore.assignedTo);
     const lastPlayer = playerById(chore.lastDoneBy);
+    const freq = FREQUENCIES.find((f) => f.id === chore.frequency) || FREQUENCIES[1];
+    const doneMark = isDoneThisPeriod(chore)
+      ? `<span style="color:var(--sage);font-size:11px;font-weight:800;margin-left:6px">✓ ${freq.doneLabel}</span>` : "";
     const lastLine = lastPlayer
       ? `Last: <span style="color:${lastPlayer.color};font-weight:700">${esc(lastPlayer.name)}</span> · ${formatRelative(chore.lastDoneAt)}`
       : "Never done yet";
@@ -604,11 +649,12 @@ function render() {
     <div class="card" style="padding:14px">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div>
-          <p style="margin:0;font-weight:800;font-size:14px">${esc(chore.name)}</p>
+          <p style="margin:0;font-weight:800;font-size:14px">${esc(chore.name)}${doneMark}</p>
           <p style="margin:2px 0 0;font-size:11px;color:var(--text-faint)">${lastLine}</p>
         </div>
-        <div class="row" style="gap:6px">
+        <div class="row" style="gap:4px">
           <span class="pill coin" style="background:var(--sun-soft);color:var(--sun)">${num(chore.points, 0)}</span>
+          ${editBtn("chore", chore.id)}
           <button class="icon-trash btn" style="color:var(--text-faint)" title="Remove chore" onclick="deleteChore('${chore.id}')">🗑</button>
         </div>
       </div>
@@ -619,22 +665,40 @@ function render() {
         <div class="row" style="gap:6px">${avatarBtns}</div>
       </div>
     </div>`;
-  }).join("");
+  };
 
-  const addChoreCard = ui.addingChore ? `
+  const choreSectionHtml = (freq) => {
+    const list = state.chores.filter((c) => c.frequency === freq.id);
+    const doneCount = list.filter((c) => isDoneThisPeriod(c)).length;
+    const adding = ui.addingChore === freq.id;
+    const addCard = adding ? `
     <div class="card fade-in" style="padding:14px;border:1px dashed var(--sage)">
-      <p style="margin:0 0 8px;font-size:12px;font-weight:800;color:var(--sage)">New chore</p>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:800;color:var(--sage)">New ${freq.label.toLowerCase()} chore</p>
       <input id="newChoreName" placeholder="Chore name" style="width:100%;margin-bottom:8px" />
       <div class="row" style="gap:8px">
         <label style="font-size:12px;font-weight:700;color:var(--text-faint)">Points</label>
         <input id="newChorePoints" type="number" min="1" value="5" style="width:64px" />
         <div style="flex:1"></div>
-        <button class="btn" style="color:var(--text-faint)" onclick="ui.addingChore=false; render();">✕</button>
-        <button class="btn pill" style="background:var(--sage);color:#fff" onclick="addChore(document.getElementById('newChoreName').value, document.getElementById('newChorePoints').value); render();">✔ Save</button>
+        <button class="btn" style="background:none;color:var(--text-faint)" onclick="ui.addingChore=false; render();">✕</button>
+        <button class="btn pill" style="background:var(--sage);color:#fff" onclick="addChore(document.getElementById('newChoreName').value, document.getElementById('newChorePoints').value, '${freq.id}'); render();">✔ Save</button>
       </div>
     </div>` : "";
+    return `
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="row" style="gap:6px">
+        <span>${freq.emoji}</span>
+        <h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">${freq.label}</h2>
+        ${list.length ? `<span style="font-size:11px;font-weight:700;color:var(--text-faint)">${doneCount}/${list.length} done</span>` : ""}
+      </div>
+      <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingChore='${freq.id}'; render();">+ Add</button>
+    </div>
+    ${list.length || adding ? `
+    <div class="grid2" style="margin-bottom:22px">${list.map((c) => choreCardHtml(c)).join("")}${addCard}</div>` : `
+    <p style="margin:0 0 22px;font-size:12px;color:var(--text-faint)">No ${freq.label.toLowerCase()} chores yet — tap "+ Add".</p>`}`;
+  };
 
   const oneOffCards = state.oneOffTasks.map((task) => {
+    if (isEditing("oneoff", task.id)) return editCardHtml("oneoff", task);
     const avatarBtns = state.players.map((p) => `
       <button class="btn avatar" style="background:${p.color};width:32px;height:32px;font-size:12px" title="Mark done by ${esc(p.name)}" onclick="completeOneOffTask('${task.id}','${p.id}')">${esc(p.initial)}</button>
     `).join("");
@@ -642,8 +706,9 @@ function render() {
     <div class="card" style="padding:14px">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <p style="margin:0;font-weight:800;font-size:14px">${esc(task.name)}</p>
-        <div class="row" style="gap:6px">
+        <div class="row" style="gap:4px">
           <span class="pill coin" style="background:var(--sun-soft);color:var(--sun)">${num(task.points, 0)}</span>
+          ${editBtn("oneoff", task.id)}
           <button class="icon-trash btn" style="color:var(--text-faint)" title="Remove task" onclick="deleteOneOffTask('${task.id}')">🗑</button>
         </div>
       </div>
@@ -659,22 +724,24 @@ function render() {
         <label style="font-size:12px;font-weight:700;color:var(--text-faint)">Points</label>
         <input id="newOneOffPoints" type="number" min="1" value="10" style="width:64px" />
         <div style="flex:1"></div>
-        <button class="btn" style="color:var(--text-faint)" onclick="ui.addingOneOff=false; render();">✕</button>
+        <button class="btn" style="background:none;color:var(--text-faint)" onclick="ui.addingOneOff=false; render();">✕</button>
         <button class="btn pill" style="background:var(--berry);color:#fff" onclick="addOneOffTask(document.getElementById('newOneOffName').value, document.getElementById('newOneOffPoints').value); render();">✔ Save</button>
       </div>
     </div>` : "";
 
   const rewardCards = state.rewards.map((reward) => {
+    if (isEditing("reward", reward.id)) return editCardHtml("reward", reward);
     const btns = state.players.map((p) => {
       const canAfford = num(p.points, 0) >= reward.cost;
-      return `<button class="btn" style="flex:1;font-size:12px;font-weight:700;padding:6px 0;border-radius:8px;background:${canAfford ? p.color + "1A" : "#F1EBF7"};color:${canAfford ? p.color : "var(--text-faint)"}" ${canAfford ? "" : "disabled"} onclick="redeemReward('${reward.id}','${p.id}')">💗 ${esc(p.name.split(" ")[0])}</button>`;
+      return `<button class="btn" style="flex:1;font-size:12px;font-weight:700;padding:6px 0;border-radius:8px;background:${canAfford ? p.color + "1A" : "var(--card-border-soft)"};color:${canAfford ? p.color : "var(--text-faint)"}" ${canAfford ? "" : "disabled"} onclick="redeemReward('${reward.id}','${p.id}')">💗 ${esc(p.name.split(" ")[0])}</button>`;
     }).join("");
     return `
     <div class="card" style="padding:14px">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <p style="margin:0;font-weight:800;font-size:14px">${esc(reward.name)}</p>
-        <div class="row" style="gap:8px">
+        <div class="row" style="gap:4px">
           <span class="pill coin" style="background:var(--sun-soft);color:var(--sun)">${num(reward.cost, 0)}</span>
+          ${editBtn("reward", reward.id)}
           <button class="icon-trash btn" style="color:var(--text-faint)" title="Remove reward" onclick="deleteReward('${reward.id}')">🗑</button>
         </div>
       </div>
@@ -690,7 +757,7 @@ function render() {
         <label style="font-size:12px;font-weight:700;color:var(--text-faint)">Cost</label>
         <input id="newRewardCost" type="number" min="1" value="15" style="width:64px" />
         <div style="flex:1"></div>
-        <button class="btn" style="color:var(--text-faint)" onclick="ui.addingReward=false; render();">✕</button>
+        <button class="btn" style="background:none;color:var(--text-faint)" onclick="ui.addingReward=false; render();">✕</button>
         <button class="btn pill" style="background:var(--sage);color:#fff" onclick="addReward(document.getElementById('newRewardName').value, document.getElementById('newRewardCost').value); render();">✔ Save</button>
       </div>
     </div>` : "";
@@ -701,45 +768,12 @@ function render() {
       <span style="font-weight:700;color:${h.delta > 0 ? "var(--sage)" : "var(--danger)"}">${h.delta > 0 ? "+" : ""}${h.delta} pts</span>
     </div>`).join("");
 
-  app.innerHTML = `
-    <div class="row" style="justify-content:space-between;margin-bottom:4px">
-      <div class="row" style="gap:8px">
-        <span style="font-size:22px">🌷</span>
-        <h1 class="display" style="margin:0;font-size:22px;font-weight:700">Our Chore Garden</h1>
-      </div>
-      <div class="row" style="gap:6px">
-        ${headerNames}
-        <button class="btn theme-btn" title="Toggle dark mode" onclick="toggleTheme()">${getTheme() === "dark" ? "☀️" : "🌙"}</button>
-      </div>
-    </div>
-    <div class="row" style="justify-content:flex-end;margin-bottom:14px">
-      <span id="syncBadge" class="sync-badge" style="color:${badge.color}">${badge.text}</span>
-    </div>
-
+  const gardenView = `
     ${setupBanner}
-
-    <div class="card" style="padding:18px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:18px">
-      ${gardenPlantSvg(stageIdx)}
-      <div style="flex:1;min-width:200px">
-        <p class="display" style="margin:0;font-size:18px;font-weight:700;color:var(--sage)">${stage.label}</p>
-        <p style="margin:2px 0 8px;font-size:12px;color:var(--text-muted)">${stage.hint} · grown together, from every chore either of you logs</p>
-        <div style="position:relative;height:12px;border-radius:999px;overflow:hidden;background:var(--sage-soft)">
-          <div style="position:absolute;inset:0;width:${progressPct}%;background:var(--sage);border-radius:999px;transition:width .5s ease"></div>
-        </div>
-        <div class="row" style="justify-content:space-between;margin-top:8px">
-          <span style="font-size:11px;color:var(--text-faint)">${nextStage ? `${state.lifetimePoints - stage.min} / ${nextStage.min - stage.min} pts to ${nextStage.label}` : "Max bloom reached 🌸"}</span>
-          <span style="font-size:11px;font-weight:700;color:var(--text-faint)">${state.lifetimePoints} lifetime pts</span>
-        </div>
-      </div>
-    </div>
 
     <div class="pts-grid" style="margin-bottom:22px">${jars}</div>
 
-    <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <div class="row" style="gap:6px"><span>🧺</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Chores</h2></div>
-      <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingChore=true; render();">+ Add</button>
-    </div>
-    <div class="grid2" style="margin-bottom:22px">${choreCards}${addChoreCard}</div>
+    ${FREQUENCIES.map((f) => choreSectionHtml(f)).join("")}
 
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
       <div class="row" style="gap:6px"><span>🎯</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">One-off Tasks</h2></div>
@@ -762,9 +796,63 @@ function render() {
     </div>` : ""}
   `;
 
+  // Snapshot any open form fields so a background sync re-render doesn't wipe what's being typed.
+  const prevValues = {};
+  app.querySelectorAll("input[id], select[id]").forEach((el) => { prevValues[el.id] = el.value; });
+  let activeId = null, selStart = null, selEnd = null;
+  const ae = document.activeElement;
+  if (ae && ae.id && Object.prototype.hasOwnProperty.call(prevValues, ae.id)) {
+    activeId = ae.id;
+    try { selStart = ae.selectionStart; selEnd = ae.selectionEnd; } catch (e) {}
+  }
+
+  app.innerHTML = `
+    <div class="row" style="justify-content:space-between;margin-bottom:4px">
+      <div class="row" style="gap:8px">
+        <span style="font-size:22px">🌷</span>
+        <h1 class="display" style="margin:0;font-size:22px;font-weight:700">Our Chore Garden</h1>
+      </div>
+      <div class="row" style="gap:6px">
+        ${headerNames}
+        <button class="btn theme-btn" title="Toggle dark mode" onclick="toggleTheme()">${getTheme() === "dark" ? "☀️" : "🌙"}</button>
+      </div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-bottom:14px">
+      <span id="syncBadge" class="sync-badge" style="color:${badge.color}">${badge.text}</span>
+    </div>
+
+    ${gardenView}
+  `;
+
+  Object.keys(prevValues).forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && "value" in el) el.value = prevValues[id];
+  });
+  let focusId = activeId, selectAll = false;
+  if (ui.focusId) { focusId = ui.focusId; selectAll = true; ui.focusId = null; }
+  const focusEl = focusId ? document.getElementById(focusId) : null;
+  if (focusEl) {
+    focusEl.focus();
+    try {
+      if (selectAll && focusEl.select) focusEl.select();
+      else if (selStart !== null && focusEl.setSelectionRange) focusEl.setSelectionRange(selStart, selEnd);
+    } catch (e) {}
+  }
+
+  if (ui.editing) {
+    const etype = ui.editing.type, eid = ui.editing.id;
+    ["editName_", "editVal_", "editFreq_"].forEach((prefix) => {
+      const el = document.getElementById(prefix + eid);
+      if (el) el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveEdit(etype, eid);
+        else if (e.key === "Escape") cancelEdit();
+      });
+    });
+  }
+
   // wire up enter-to-save on the add-chore / add-reward / rename inputs
   const nc = document.getElementById("newChoreName");
-  if (nc) nc.addEventListener("keydown", (e) => { if (e.key === "Enter") { addChore(nc.value, document.getElementById("newChorePoints").value); render(); } });
+  if (nc) nc.addEventListener("keydown", (e) => { if (e.key === "Enter") { addChore(nc.value, document.getElementById("newChorePoints").value, ui.addingChore); render(); } });
   const nr = document.getElementById("newRewardName");
   if (nr) nr.addEventListener("keydown", (e) => { if (e.key === "Enter") { addReward(nr.value, document.getElementById("newRewardCost").value); render(); } });
   const no = document.getElementById("newOneOffName");
