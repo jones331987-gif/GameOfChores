@@ -54,7 +54,7 @@
     padding: 24px 12px;
     transition: background 0.2s ease, color 0.2s ease;
   }
-  .wrap { width: 100%; max-width: 720px; }
+  .wrap { width: 100%; max-width: 1120px; }
   .display { font-family: 'Baloo 2', cursive; }
   .card {
     background: var(--card-bg);
@@ -90,9 +90,16 @@
   }
   select:focus { outline: none; border-color: var(--sage); }
   .row { display: flex; align-items: center; }
-  .grid2 { display: grid; grid-template-columns: 1fr; gap: 12px; }
-  @media (min-width: 640px) { .grid2 { grid-template-columns: 1fr 1fr; } }
-  .pts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  /* Cards flow into as many columns as fit; sections sit side by side on wide screens. */
+  .cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .cols3, .cols2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 20px; align-items: start; }
+  @media (min-width: 860px) {
+    .cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  .sect { margin-bottom: 22px; min-width: 0; }
+  .sect-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .pts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
   .pill { border-radius: 999px; font-weight: 700; font-size: 12px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; }
   .icon-trash, .icon-edit { background: none; padding: 2px 4px; }
   .icon-edit { color: var(--text-faint); font-size: 13px; }
@@ -698,7 +705,8 @@ function render() {
       </div>
     </div>` : "";
     return `
-    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <section class="sect">
+    <div class="sect-head">
       <div class="row" style="gap:6px">
         <span>${freq.emoji}</span>
         <h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">${freq.label}</h2>
@@ -707,8 +715,9 @@ function render() {
       <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingChore='${freq.id}'; render();">+ Add</button>
     </div>
     ${list.length || adding ? `
-    <div class="grid2" style="margin-bottom:22px">${list.map((c) => choreCardHtml(c)).join("")}${addCard}</div>` : `
-    <p style="margin:0 0 22px;font-size:12px;color:var(--text-faint)">No ${freq.label.toLowerCase()} chores yet — tap "+ Add".</p>`}`;
+    <div class="cardgrid">${list.map((c) => choreCardHtml(c)).join("")}${addCard}</div>` : `
+    <p style="margin:0;font-size:12px;color:var(--text-faint)">No ${freq.label.toLowerCase()} chores yet — tap "+ Add".</p>`}
+    </section>`;
   };
 
   const oneOffCards = state.oneOffTasks.map((task) => {
@@ -787,26 +796,32 @@ function render() {
 
     <div class="pts-grid" style="margin-bottom:22px">${jars}</div>
 
-    ${FREQUENCIES.map((f) => choreSectionHtml(f)).join("")}
+    <div class="cols3">${FREQUENCIES.map((f) => choreSectionHtml(f)).join("")}</div>
 
-    <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <div class="row" style="gap:6px"><span>🎯</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">One-off Tasks</h2></div>
-      <button class="btn pill" style="background:var(--berry-soft);color:var(--berry)" onclick="ui.addingOneOff=true; render();">+ Add</button>
-    </div>
-    ${state.oneOffTasks.length || ui.addingOneOff ? `
-    <div class="grid2" style="margin-bottom:22px">${oneOffCards}${addOneOffCard}</div>` : `
-    <p style="margin:0 0 22px;font-size:12px;color:var(--text-faint)">Nothing special on the list right now — tap "+ Add" for a task that's a one-time thing, like fixing the shelf or returning a package.</p>`}
+    <div class="cols2">
+      <section class="sect">
+        <div class="sect-head">
+          <div class="row" style="gap:6px"><span>🎯</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">One-off Tasks</h2></div>
+          <button class="btn pill" style="background:var(--berry-soft);color:var(--berry)" onclick="ui.addingOneOff=true; render();">+ Add</button>
+        </div>
+        ${state.oneOffTasks.length || ui.addingOneOff ? `
+        <div class="cardgrid">${oneOffCards}${addOneOffCard}</div>` : `
+        <p style="margin:0;font-size:12px;color:var(--text-faint)">Nothing special on the list right now — tap "+ Add" for a task that's a one-time thing, like fixing the shelf or returning a package.</p>`}
+      </section>
 
-    <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <div class="row" style="gap:6px"><span>🎁</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Rewards</h2></div>
-      <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingReward=true; render();">+ Add</button>
+      <section class="sect">
+        <div class="sect-head">
+          <div class="row" style="gap:6px"><span>🎁</span><h2 class="display" style="margin:0;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">Rewards</h2></div>
+          <button class="btn pill" style="background:var(--sage-soft);color:var(--sage)" onclick="ui.addingReward=true; render();">+ Add</button>
+        </div>
+        <div class="cardgrid">${rewardCards}${addRewardCard}</div>
+      </section>
     </div>
-    <div class="grid2" style="margin-bottom:22px">${rewardCards}${addRewardCard}</div>
 
     ${state.history.length ? `
     <div>
       <p style="margin:0 0 8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint)">Recent activity</p>
-      <div>${historyItems}</div>
+      <div style="max-width:560px">${historyItems}</div>
     </div>` : ""}
   `;
 
